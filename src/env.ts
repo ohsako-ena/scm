@@ -29,3 +29,11 @@ export function splitList(value: string | undefined): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+export function parseJson<T>(body: string): T | undefined {
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    return undefined;
+  }
+}

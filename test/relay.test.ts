@@ -173,3 +173,68 @@ describe("Chatwork", () => {
 it("toBase64 round-trips", () => {
   expect(toBase64(new TextEncoder().encode("abc").buffer as ArrayBuffer)).toBe("YWJj");
 });
+
+describe("hardening", () => {
+  it("rejects non-numeric Slack timestamps", async () => {
+    const body = "{}";
+    const sig = "v0=" + (await hmacHex("slack-secret", `v0:abc:${body}`));
+    expect(await verifySlackSignature("slack-secret", "abc", body, sig)).toBe(false);
+  });
+
+  it("returns 400 for a validly signed but malformed Slack body", async () => {
+    const body = "not json";
+    const ts = String(Math.floor(Date.now() / 1000));
+    const sig = "v0=" + (await hmacHex("slack-secret", `v0:${ts}:${body}`));
+    const { ctx } = makeCtx();
+    const res = await worker.fetch(
+      new Request("https://x/slack/events", {
+        method: "POST",
+        body,
+        headers: { "x-slack-request-timestamp": ts, "x-slack-signature": sig },
+      }),
+      env,
+      ctx,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses LINE webhooks when the channel secret is missing", async () => {
+    const body = JSON.stringify({ events: [] });
+    const forged = "AAAA";
+    const { ctx } = makeCtx();
+    const res = await worker.fetch(
+      new Request("https://x/line/webhook", { method: "POST", body, headers: { "x-line-signature": forged } }),
+      { ...env, LINE_CHANNEL_SECRET: "" },
+      ctx,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("only replies with IDs while LINE_TO is unset", async () => {
+    const replies: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        replies.push(JSON.parse(init.body as string).messages[0].text);
+        return new Response("{}");
+      }),
+    );
+    const body = JSON.stringify({ events: [{ type: "follow", replyToken: "r", source: { type: "user", userId: "UABC" } }] });
+    const sig = await hmacBase64("line-secret", body);
+    const send = (e: Env) =>
+      worker.fetch(
+        new Request("https://x/line/webhook", { method: "POST", body, headers: { "x-line-signature": sig } }),
+        e,
+        makeCtx().ctx,
+      );
+
+    await send(env);
+    expect(replies).toHaveLength(0);
+    await send({ ...env, LINE_TO: "" });
+    expect(replies[0]).toContain("UABC");
+  });
+
+  it("ignores malformed Chatwork tokens instead of crashing", async () => {
+    expect(await verifyChatworkSignature(["***not base64***"], "{}", "x")).toBe(false);
+  });
+});

@@ -1,5 +1,5 @@
 import { hmacBase64, safeEqual } from "./crypto";
-import type { Env } from "./env";
+import { type Env, parseJson } from "./env";
 
 /** LINE のテキストメッセージ上限は 5000 文字 */
 const MAX_TEXT = 5000;
@@ -41,9 +41,11 @@ interface LineEvent {
 
 /**
  * LINE 公式アカウントの Webhook。
- * 友だち追加やメッセージ送信に対して、LINE_TO に設定すべき ID を返信する（初期設定用）。
+ * LINE_TO が未設定の間だけ、友だち追加やメッセージ送信に対して LINE_TO に設定すべき ID を返信する（初期設定用）。
  */
 export async function handleLineWebhook(req: Request, env: Env): Promise<Response> {
+  // シークレット未設定のまま空鍵で検証すると署名が偽造できてしまうので、受け付けない
+  if (!env.LINE_CHANNEL_SECRET) return new Response("line not configured", { status: 404 });
   const body = await req.text();
   const signature = req.headers.get("x-line-signature") ?? "";
   const expected = await hmacBase64(env.LINE_CHANNEL_SECRET, body);
@@ -51,7 +53,10 @@ export async function handleLineWebhook(req: Request, env: Env): Promise<Respons
     return new Response("invalid signature", { status: 401 });
   }
 
-  const { events } = JSON.parse(body) as { events: LineEvent[] };
+  // 初期設定が済んだら ID は返さない（第三者が友だち追加しても何も起きないようにする）
+  if (env.LINE_TO) return new Response("ok");
+
+  const events = parseJson<{ events: LineEvent[] }>(body)?.events ?? [];
   for (const ev of events) {
     if (!ev.replyToken || (ev.type !== "follow" && ev.type !== "message")) continue;
     const id = ev.source?.groupId ?? ev.source?.userId;

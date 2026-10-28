@@ -1,5 +1,5 @@
 import { fromBase64, hmacBase64, safeEqual } from "./crypto";
-import { type Env, splitList } from "./env";
+import { type Env, parseJson, splitList } from "./env";
 import { pushToLine } from "./line";
 
 interface ChatworkPayload {
@@ -23,7 +23,13 @@ interface ChatworkPayload {
 export async function verifyChatworkSignature(tokens: string[], body: string, signature: string): Promise<boolean> {
   if (!signature) return false;
   for (const token of tokens) {
-    if (safeEqual(signature, await hmacBase64(fromBase64(token), body))) return true;
+    let key: Uint8Array;
+    try {
+      key = fromBase64(token);
+    } catch {
+      continue; // 設定ミスのトークンは無視する
+    }
+    if (safeEqual(signature, await hmacBase64(key, body))) return true;
   }
   return false;
 }
@@ -85,8 +91,9 @@ export async function handleChatwork(req: Request, env: Env, ctx: ExecutionConte
     return new Response("invalid signature", { status: 401 });
   }
 
-  const payload = JSON.parse(body) as ChatworkPayload;
-  const ev = payload.webhook_event;
+  const payload = parseJson<ChatworkPayload>(body);
+  const ev = payload?.webhook_event;
+  if (!payload || !ev) return new Response("bad request", { status: 400 });
   const senderId = String(ev.from_account_id ?? ev.account_id ?? "");
   // 編集通知は二重になりやすいので転送しない。自分の発言も転送しない。
   const skip =

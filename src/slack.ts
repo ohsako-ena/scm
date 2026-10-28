@@ -1,5 +1,5 @@
 import { hmacHex, safeEqual } from "./crypto";
-import { type Env, splitList } from "./env";
+import { type Env, parseJson, splitList } from "./env";
 import { pushToLine } from "./line";
 
 /** Slack が許容する署名タイムスタンプのずれ（リプレイ攻撃対策） */
@@ -34,7 +34,8 @@ export async function verifySlackSignature(
   signature: string,
   now = Date.now() / 1000,
 ): Promise<boolean> {
-  if (!timestamp || Math.abs(now - Number(timestamp)) > MAX_SKEW_SECONDS) return false;
+  const ts = Number(timestamp);
+  if (!timestamp || !Number.isFinite(ts) || Math.abs(now - ts) > MAX_SKEW_SECONDS) return false;
   const expected = "v0=" + (await hmacHex(secret, `v0:${timestamp}:${body}`));
   return safeEqual(signature, expected);
 }
@@ -110,8 +111,8 @@ export async function formatSlackMessage(env: Env, ev: SlackMessageEvent, teamId
 }
 
 export async function handleSlack(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const body = await req.text();
   if (!env.SLACK_SIGNING_SECRET) return new Response("slack not configured", { status: 404 });
+  const body = await req.text();
 
   const ok = await verifySlackSignature(
     env.SLACK_SIGNING_SECRET,
@@ -121,7 +122,8 @@ export async function handleSlack(req: Request, env: Env, ctx: ExecutionContext)
   );
   if (!ok) return new Response("invalid signature", { status: 401 });
 
-  const payload = JSON.parse(body) as SlackPayload;
+  const payload = parseJson<SlackPayload>(body);
+  if (!payload) return new Response("bad request", { status: 400 });
   if (payload.type === "url_verification") {
     return new Response(payload.challenge ?? "", { headers: { "Content-Type": "text/plain" } });
   }
