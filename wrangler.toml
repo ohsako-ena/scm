@@ -1,0 +1,9 @@
+name = "chat-to-line-relay"
+main = "src/index.ts"
+compatibility_date = "2025-10-01"
+
+# 秘密情報は `wrangler secret put <名前>` で登録してください（README 参照）。
+# 秘密でない設定はここに書いても構いません。
+[vars]
+# 転送対象にする Slack チャンネル ID（カンマ区切り）。DM とメンションは常に転送されます。
+SLACK_WATCH_CHANNELS = ""
