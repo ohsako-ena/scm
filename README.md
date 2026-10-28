@@ -36,7 +36,15 @@ https://xxx.slack.com/archives/C0123/p1700000000000000
 
 ## セットアップ
 
-必要なもの：Node.js 20 以上、Cloudflare アカウント（無料）、LINE アカウント、Slack／Chatwork のアカウント。
+必要なもの：Node.js 20 以上、Cloudflare アカウント（無料）、LINE アカウント、Slack／Chatwork／LINE WORKS のアカウント。
+
+**おすすめ：対話式スクリプトで一気に進める**
+
+```bash
+bash scripts/setup.sh
+```
+
+デプロイしたあと、各サービスの管理画面に貼る URL を表示し、画面で取得した値を順に聞いて登録します。Slack は `slack-app-manifest.yml` を貼るだけで権限とイベントの設定が済みます。以下は同じ内容を手作業で行う場合の手順です。
 
 ### 1. Worker をデプロイする
 
