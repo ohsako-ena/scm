@@ -1,11 +1,12 @@
 # chat-to-line-relay
 
-Slack と Chatwork に届いた連絡を LINE に転送する、Cloudflare Workers 製の小さな中継サーバーです。
+Slack・Chatwork・LINE WORKS に届いた連絡を LINE に転送する、Cloudflare Workers 製の小さな中継サーバーです。
 
 ```
 Slack (Events API) ──┐
                      ├─▶ Cloudflare Worker ──▶ LINE Messaging API（プッシュ通知）──▶ あなたの LINE
-Chatwork (Webhook) ──┘
+Chatwork (Webhook) ──┤
+LINE WORKS (Bot)   ──┘
 ```
 
 > LINE Notify は 2025 年 3 月末で終了したため、LINE 公式アカウント（Messaging API）から自分宛てに送る方式にしています。
@@ -16,6 +17,7 @@ Chatwork (Webhook) ──┘
 | --- | --- |
 | Slack | 自分宛ての DM・グループ DM／自分へのメンション／`SLACK_WATCH_CHANNELS` に指定したチャンネルの発言 |
 | Chatwork | 設定した Webhook が受け取ったもの（「自分へのメンション」「指定ルームの新着メッセージ」） |
+| LINE WORKS | 転送用 Bot を招待したトークルームのメッセージ（個人どうしの 1:1 トークは仕組み上取れません） |
 
 自分自身の発言、Bot の発言、メッセージの編集・削除は転送しません。LINE には次のような形で届きます。
 
@@ -129,6 +131,32 @@ npx wrangler deploy
 
 > アカウントイベントとルームイベントを同じルームに両方設定すると、そのルームで自分宛てにメンションされたメッセージは 2 回届きます。
 
+### 5. LINE WORKS を繋ぐ
+
+LINE WORKS は外部から個人のトークを読む仕組みがないため、「転送用 Bot」を作って、転送したいトークルームに招待する方式です。
+**Bot の利用開始には LINE WORKS の管理者の操作が必要です。** 他社のテナントの場合は、その会社の許可も先に取ってください。
+
+1. [LINE WORKS Developers](https://dev.worksmobile.com/jp/) の Developer Console で「Bot」→「登録」。
+   - Callback URL：`WORKER_URL/lineworks/callback`（「On」にする）
+   - Callback Event：「テキスト」「ファイル」などにチェック
+   - 「複数人のトークルームに招待可」にチェック
+2. 作成した Bot の **Bot Secret** を登録します（複数テナントで Bot を作った場合はカンマ区切り）。
+
+   ```bash
+   npx wrangler secret put LINEWORKS_BOT_SECRETS
+   ```
+
+3. 管理者に「管理者画面 → サービス → Bot」でこの Bot を追加し、公開設定をしてもらいます。
+4. 転送したいトークルームに Bot を招待します。
+5. 自分の発言を転送したくなければ、自分の LINE WORKS ID（`xxx@会社ドメイン` の形）を登録します。
+
+   ```bash
+   npx wrangler secret put LINEWORKS_MY_USER_ID
+   ```
+
+> 送信者は名前ではなく LINE WORKS の ID で表示されます。
+> トークルームに Bot がいることは他のメンバーからも見えるので、事前にひとこと伝えておくのがおすすめです。
+
 ## 設定値の一覧
 
 | 名前 | 必須 | 内容 |
@@ -143,8 +171,10 @@ npx wrangler deploy
 | `CHATWORK_WEBHOOK_TOKENS` | Chatwork 利用時 | Webhook のトークン（カンマ区切りで複数可） |
 | `CHATWORK_MY_ACCOUNT_ID` | 任意 | 自分の Chatwork アカウント ID |
 | `CHATWORK_API_TOKEN` | 任意 | 名前・ルーム名の表示用 API トークン |
+| `LINEWORKS_BOT_SECRETS` | LINE WORKS 利用時 | Bot の Bot Secret（カンマ区切りで複数可） |
+| `LINEWORKS_MY_USER_ID` | 任意 | 自分の LINE WORKS ID |
 
-Slack だけ・Chatwork だけ使う場合は、使わない方の設定は空のままで構いません。
+使わないサービスがある場合は、使わない方の設定は空のままで構いません。
 
 ## 開発
 
@@ -163,7 +193,7 @@ npm run typecheck
 
 ### プログラム側の対策
 
-- Slack・Chatwork・LINE からのリクエストはすべて署名を検証し、一致しないものは拒否します。Slack は 5 分以上前のリクエスト（使い回し）も拒否します。
+- Slack・Chatwork・LINE WORKS・LINE からのリクエストはすべて署名を検証し、一致しないものは拒否します。Slack は 5 分以上前のリクエスト（使い回し）も拒否します。
 - 署名用のシークレットが未設定のサービスは、受け口ごと無効（404）になります。
 - LINE 公式アカウントが ID を返信するのは、`LINE_TO` が未設定の初期設定中だけです。設定後に第三者が友だち追加しても何も返しません。
 - トークン類は `wrangler secret` で Cloudflare に暗号化して保存され、リポジトリには含まれません。ログにも出力しません。
@@ -173,5 +203,5 @@ npm run typecheck
 - **社外秘の扱い**：転送した本文は LINE（LINE ヤフー社）のサーバーを経由し、スマホのロック画面にも表示されます。社内の情報管理ルールで社外サービスへの転送が許されているか、先に確認してください。顧客情報や個人情報が多いチャンネルは `SLACK_WATCH_CHANNELS` に入れないのが安全です。
 - **LINE_TO にグループを使う場合**：そのグループの全員に内容が見えます。原則は自分のユーザー ID にしてください。
 - **Slack のトークンは強い権限を持ちます**：`SLACK_TOKEN`（xoxp-）はあなたが見られる全メッセージを読める鍵です。他人に渡さず、漏えいが疑われたら Slack アプリ画面で「Revoke」して再発行してください。名前表示が不要なら `SLACK_TOKEN` は登録しなくても動きます（Slack からの受信自体は Signing Secret で動きます）。
-- **退職・異動時**：Slack アプリのアンインストール、Chatwork Webhook の削除、`npx wrangler delete` で停止できます。
+- **退職・異動時**：Slack アプリのアンインストール、Chatwork Webhook の削除、LINE WORKS Bot の削除、`npx wrangler delete` で停止できます。
 - **Chatwork の再送**：Chatwork の署名には時刻が含まれないため、通信を盗聴された場合の再送は防げません（HTTPS なので現実的なリスクは低いです）。

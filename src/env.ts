@@ -21,6 +21,12 @@ export interface Env {
   CHATWORK_MY_ACCOUNT_ID?: string;
   /** 任意。送信者名・ルーム名を表示するための API トークン */
   CHATWORK_API_TOKEN?: string;
+
+  // LINE WORKS
+  /** Bot ごとの Bot Secret（カンマ区切りで複数可） */
+  LINEWORKS_BOT_SECRETS?: string;
+  /** 自分の LINE WORKS ユーザー ID。自分の発言を除外するのに使う */
+  LINEWORKS_MY_USER_ID?: string;
 }
 
 export function splitList(value: string | undefined): string[] {

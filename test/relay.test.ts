@@ -238,3 +238,33 @@ describe("hardening", () => {
     expect(await verifyChatworkSignature(["***not base64***"], "{}", "x")).toBe(false);
   });
 });
+
+describe("LINE WORKS", () => {
+  it("forwards signed room messages, skips own and unsigned ones", async () => {
+    const pushed = mockLine();
+    const e = { ...env, LINEWORKS_BOT_SECRETS: "works-secret", LINEWORKS_MY_USER_ID: "me@loive" };
+    const post = async (payload: object, sign = true) => {
+      const body = JSON.stringify(payload);
+      const sig = sign ? await hmacBase64("works-secret", body) : "bad";
+      const { ctx, settle } = makeCtx();
+      const res = await worker.fetch(
+        new Request("https://x/lineworks/callback", { method: "POST", body, headers: { "x-works-signature": sig } }),
+        e,
+        ctx,
+      );
+      await settle();
+      return res;
+    };
+    const msg = (userId: string) => ({
+      type: "message",
+      source: { userId, channelId: "ch1", domainId: 1 },
+      content: { type: "text", text: "お疲れさまです" },
+    });
+
+    expect((await post(msg("tanaka@loive"))).status).toBe(200);
+    expect(pushed).toEqual(["【LINE WORKS】トークルーム\ntanaka@loive:\nお疲れさまです"]);
+    await post(msg("me@loive"));
+    expect((await post(msg("tanaka@loive"), false)).status).toBe(401);
+    expect(pushed).toHaveLength(1);
+  });
+});

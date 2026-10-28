@@ -1,6 +1,7 @@
 import { handleChatwork } from "./chatwork";
 import type { Env } from "./env";
 import { handleLineWebhook } from "./line";
+import { handleLineWorks } from "./lineworks";
 import { handleSlack } from "./slack";
 
 export default {
@@ -14,6 +15,8 @@ export default {
         return handleSlack(req, env, ctx);
       case "/chatwork/webhook":
         return handleChatwork(req, env, ctx);
+      case "/lineworks/callback":
+        return handleLineWorks(req, env, ctx);
       case "/line/webhook":
         return handleLineWebhook(req, env);
       default:
