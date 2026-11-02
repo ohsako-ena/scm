@@ -36,7 +36,11 @@ https://xxx.slack.com/archives/C0123/p1700000000000000
 
 必要なもの：Node.js 20 以上、Cloudflare アカウント（無料）、LINE アカウント、Slack／Chatwork のアカウント。
 
-**おすすめ：対話式スクリプトで一気に進める**
+**いちばん簡単：GitHub だけで進める（インストール不要）**
+
+[docs/github-setup.md](docs/github-setup.md) の手順に沿って、GitHub の Secrets に値を貼り、Actions の「Run workflow」を押すだけで配置まで完了します。
+
+**パソコンで進める場合：対話式スクリプト**
 
 ```bash
 bash scripts/setup.sh
